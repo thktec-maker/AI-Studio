@@ -662,3 +662,4 @@ with col_img:
         """,
             unsafe_allow_html=True,
         )
+        
