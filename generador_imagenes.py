@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 
 # ──────────────────────────────────────────────────────────────
-# 1. CONFIGURACIÓN
+# 1. CONFIGURACIÓN DE PÁGINA
 # ──────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="AI Studio Pro",
@@ -16,74 +16,60 @@ st.set_page_config(
 )
 
 # ──────────────────────────────────────────────────────────────
-# 2. TABLA DE ESTILOS RÁPIDOS
+# 2. DEFINICIÓN DE ESTILOS RÁPIDOS
 # ──────────────────────────────────────────────────────────────
-# Cada estilo tiene:
-# - id: para manejar estado
-# - label: lo que ve el usuario
-# - inj: texto que se inyecta al prompt para el modelo (en inglés, preciso)
-
 QUICK_STYLES = [
     {
         "id": "realismo",
         "label": "🎨 Realismo",
-        "inj": "ultra realistic, 8k photography, sharp focus, natural lighting"
+        "inj": "ultra realistic, 8k photography, sharp focus, natural lighting, highly detailed"
     },
     {
         "id": "cinematic",
         "label": "🎬 Cinematic",
-        "inj": "cinematic still frame from a movie, dramatic lighting, shallow depth of field, 35mm lens"
+        "inj": "cinematic still frame, dramatic movie lighting, 35mm lens, depth of field, anamorphic"
     },
     {
         "id": "cyberpunk",
         "label": "🌌 Cyberpunk",
-        "inj": "cyberpunk style, neon lights, rainy atmosphere, high contrast, futuristic city mood"
+        "inj": "cyberpunk style, neon glow, rainy night atmosphere, futuristic city, high contrast"
     },
     {
         "id": "ilustracion",
         "label": "🖌️ Ilustración",
-        "inj": "digital illustration, clean line art, soft shading, artstation quality"
+        "inj": "digital illustration, clean line art, vibrant colors, Artstation style, masterwork"
     },
     {
         "id": "naturaleza",
         "label": "🌿 Naturaleza",
-        "inj": "natural environment, soft daylight, realistic plants and rocks, peaceful mood"
+        "inj": "wildlife photography, national geographic style, soft sunlight, macro detail"
     },
     {
         "id": "magico",
         "label": "✨ Mágico",
-        "inj": "fantasy magical atmosphere, glowing particles, ethereal lighting, high detail"
+        "inj": "fantasy ethereal atmosphere, glowing particles, dreamlike, soft pastel colors"
     },
 ]
 
 # ──────────────────────────────────────────────────────────────
-# 3. UTILIDADES PROMPT / URL
+# 3. UTILIDADES DE PROMPT Y URL
 # ──────────────────────────────────────────────────────────────
 
 def limpiar_prompt(prompt: str) -> str:
-    """
-    Versión “humana” del prompt para título:
-    - Elimina duplicados separados por coma
-    - Recorta a ~80 caracteres
-    """
+    """Crea un título corto y limpio para la UI."""
     p = " ".join(prompt.split())
     partes = [s.strip() for s in p.split(",") if s.strip()]
     usados = set()
     unicas = []
     for s in partes:
-        clave = s.lower()
-        if clave not in usados:
-            usados.add(clave)
+        if s.lower() not in usados:
+            usados.add(s.lower())
             unicas.append(s)
     limpio = ", ".join(unicas)
     return (limpio[:82] + "...") if len(limpio) > 85 else limpio.capitalize()
 
-
 def deduplicar_prompt(prompt: str) -> str:
-    """
-    Limpia el prompt ANTES de enviarlo a la API:
-    - Elimina frases repetidas
-    """
+    """Limpia el prompt antes de enviarlo a la API."""
     partes = [s.strip() for s in prompt.split(",") if s.strip()]
     usados = set()
     unicas = []
@@ -93,9 +79,7 @@ def deduplicar_prompt(prompt: str) -> str:
             unicas.append(s)
     return ", ".join(unicas)
 
-
-def construir_url(prompt: str, w: int, h: int, seed: int,
-                  model_tag: str, enhance: bool, neg_prompt: str) -> str:
+def construir_url(prompt: str, w: int, h: int, seed: int, model_tag: str, enhance: bool, neg_prompt: str) -> str:
     p_enc = urllib.parse.quote(prompt)
     url = (
         f"https://image.pollinations.ai/prompt/{p_enc}"
@@ -107,559 +91,224 @@ def construir_url(prompt: str, w: int, h: int, seed: int,
         url += f"&negative={urllib.parse.quote(neg_prompt.strip())}"
     return url
 
-
 def map_modelo(modelo: str) -> str:
-    """Mapea el select de UI al tag interno de modelo."""
-    if "FLUX" in modelo:
-        return "flux"
-    if "Stable" in modelo or "SDXL" in modelo:
-        return "sdxl"
+    if "FLUX" in modelo: return "flux"
+    if "SDXL" in modelo: return "sdxl"
     return "turbo"
 
-
-def estimar_tiempo(modelo: str, resolucion: str, detalle: str) -> tuple[float, float]:
-    """
-    Heurística simple de tiempo estimado en segundos (min, max).
-    Ajusta estos valores según tus mediciones reales.
-    """
-    base = 3.0
-
-    # Resolución
-    if "1024" in resolucion:
-        base += 2.0
-    elif "768" in resolucion:
-        base += 1.0
-
-    # Modelo
-    if "Pro" in modelo or "Dev" in modelo:
-        base += 1.5
-    elif "Turbo" in modelo:
-        base -= 0.5
-
-    # Detalle
-    if detalle == "Alto":
-        base += 2.0
-    elif detalle == "Bajo":
-        base -= 1.0
-
-    base = max(1.5, base)
-    return base * 0.7, base * 1.3  # rango min–max
-
-
-def get_style_by_id(style_id: str):
-    for s in QUICK_STYLES:
-        if s["id"] == style_id:
-            return s
-    return None
-
+def safe_rerun():
+    """Ejecuta rerun compatible con versiones viejas y nuevas de Streamlit."""
+    if hasattr(st, "rerun"):
+        st.rerun()
+    else:
+        st.experimental_rerun()
 
 # ──────────────────────────────────────────────────────────────
-# 4. CSS / LAYOUT
+# 4. DISEÑO CSS (PREMIUM AI STUDIO)
 # ──────────────────────────────────────────────────────────────
-
-st.markdown(
-    """
+st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
 
 :root {
     --primary: #10a37f;
-    --primary-dark: #059669;
-    --primary-glow: rgba(16,163,127,0.35);
+    --primary-glow: rgba(16,163,127,0.2);
     --bg-card: #ffffff;
-    --border: #e5e7eb;
     --text-main: #111827;
     --text-sub: #4b5563;
-    --text-muted: #9ca3af;
 }
 
-/* Ocultar chrome de Streamlit */
 #MainMenu, footer, header { visibility: hidden; }
 
 .stApp {
-    font-family: 'Inter', system-ui, sans-serif;
-    background: radial-gradient(circle at top left, #dbeafe 0%, #f9fafb 35%, #f3f4f6 100%);
+    font-family: 'Inter', sans-serif;
+    background: radial-gradient(circle at top left, #f3f4f6 0%, #e5e7eb 100%);
 }
 
-/* Contenedor principal centrado */
 main .block-container {
-    max-width: 980px !important;
-    padding: 1.5rem 1.75rem 3rem !important;
-    margin: 0 auto !important;
+    max-width: 950px !important;
+    padding: 1.5rem !important;
 }
 
-/* Topbar */
-.ai-topbar {
-    text-align: center;
-    margin-bottom: 1.5rem;
-}
-.ai-topbar h1 {
-    font-size: 2.2rem;
-    font-weight: 800;
-    letter-spacing: -0.03em;
-    color: var(--text-main);
-    margin-bottom: 0.1rem;
-}
-.ai-topbar p {
-    font-size: 1rem;
-    color: var(--text-sub);
-}
-
-/* Card principal */
+/* Card Principal */
 .st-key-main-card {
     background: var(--bg-card);
-    border-radius: 20px !important;
-    border: 1px solid var(--border) !important;
-    padding: 1.6rem 1.9rem !important;
-    box-shadow: 0 18px 40px rgba(15,23,42,0.10) !important;
+    border-radius: 24px;
+    border: 1px solid #e5e7eb;
+    padding: 2rem !important;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.05);
 }
 
-/* Textarea */
-.stTextArea textarea {
-    border-radius: 12px !important;
-    padding: 0.85rem 1rem !important;
-    border: 1px solid var(--border) !important;
-    font-size: 1.02rem !important;
-    line-height: 1.6 !important;
-    background: #fafafa !important;
-}
-
-/* Labels */
-.stSelectbox label, .stSlider label, label {
-    font-size: 0.8rem !important;
-    font-weight: 600 !important;
-    color: var(--text-sub) !important;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-}
-
-/* Selects */
-.stSelectbox [data-baseweb="select"] > div {
-    border-radius: 10px !important;
-    border: 1px solid var(--border) !important;
-    font-size: 0.9rem !important;
-    padding: 0.25rem 0.5rem !important;
-    background: #fafafa !important;
-}
-
-/* Botones principales */
-.stButton > button {
-    width: 100% !important;
-    border-radius: 999px !important;
-    border: none !important;
-    padding: 0.7rem 1.2rem !important;
-    font-size: 0.95rem !important;
-    font-weight: 600 !important;
-    background: linear-gradient(135deg, var(--primary), var(--primary-dark)) !important;
-    color: white !important;
-    box-shadow: 0 8px 22px var(--primary-glow) !important;
-    transition: transform 0.12s ease, box-shadow 0.12s ease !important;
-}
-.stButton > button:hover {
-    transform: translateY(-1px) !important;
-}
-
-/* Botón descarga */
-.stDownloadButton > button {
-    border-radius: 999px !important;
-    border: 1px solid var(--border) !important;
-    padding: 0.65rem 1rem !important;
-    font-size: 0.88rem !important;
-    background: #f9fafb !important;
-    color: var(--text-sub) !important;
-}
-
-/* Estilos rápidos (chips) */
-.ai-styles-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-    margin-bottom: 0.8rem;
-}
+/* Estilos de botones (Chips) */
 .ai-chip-btn > button {
-    border-radius: 999px !important;
-    border: 1px solid var(--border) !important;
-    padding: 0.25rem 0.8rem !important;
-    font-size: 0.8rem !important;
-    font-weight: 500 !important;
+    border-radius: 12px !important;
+    border: 1px solid #e5e7eb !important;
     background: #f9fafb !important;
-    color: var(--text-sub) !important;
-    box-shadow: none !important;
+    font-size: 0.85rem !important;
+    transition: all 0.2s ease !important;
 }
+
 .ai-chip-btn-active > button {
     border-color: var(--primary) !important;
-    background: rgba(16,163,127,0.06) !important;
+    background: rgba(16,163,127,0.1) !important;
     color: var(--primary) !important;
+    box-shadow: 0 0 10px var(--primary-glow) !important;
 }
 
-/* Resultados */
-.ai-divider {
-    border: none;
-    border-top: 1px solid var(--border);
-    margin: 1.4rem 0 1.1rem;
-}
-.ai-results-label {
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    margin-bottom: 0.4rem;
-}
-.ai-results-title {
-    font-size: 1.45rem;
-    font-weight: 700;
-    color: var(--text-main);
-    margin-bottom: 0.5rem;
-}
-.ai-meta-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.8rem;
-    padding: 0.18rem 0.6rem;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    background: #f3f4f6;
-    color: var(--text-sub);
-    margin-right: 0.3rem;
-    margin-bottom: 0.3rem;
-}
-
-/* Imagen */
+/* Imagen Frame */
 .ai-img-frame {
-    border-radius: 16px;
-    border: 1px solid rgba(255,255,255,0.7);
-    box-shadow: 0 20px 45px rgba(15,23,42,0.25);
-    max-height: 420px;
+    border-radius: 20px;
     overflow: hidden;
-    background: #0b1120;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.ai-img-frame img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    max-height: 420px;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.15);
+    background: #000;
+    margin-top: 1rem;
 }
 
 /* Placeholder */
 .ai-placeholder {
-    background: #f9fafb;
-    border-radius: 16px;
-    border: 1.5px dashed #d1d5db;
-    padding: 2.5rem 1.5rem;
+    border: 2px dashed #d1d5db;
+    border-radius: 20px;
+    padding: 3rem;
     text-align: center;
-    color: var(--text-muted);
-    font-size: 0.9rem;
+    color: #9ca3af;
 }
 </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────
-# 5. ESTADO
+# 5. ESTADO DE SESIÓN
 # ──────────────────────────────────────────────────────────────
-
-def init_state():
-    defaults = {
-        "history": [],
-        "current": None,
-        "last_prompt": "",
-        "active_style": None,      # id del estilo seleccionado
-        "last_time": None,
-        "last_estimate": None,
-    }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
-
-init_state()
+if "history" not in st.session_state: st.session_state.history = []
+if "current" not in st.session_state: st.session_state.current = None
+if "last_prompt" not in st.session_state: st.session_state.last_prompt = ""
+if "active_style" not in st.session_state: st.session_state.active_style = None
 
 # ──────────────────────────────────────────────────────────────
-# 6. TOPBAR
+# 6. INTERFAZ DE USUARIO (UI)
 # ──────────────────────────────────────────────────────────────
 
-st.markdown(
-    """
-<div class="ai-topbar">
-  <h1>AI Studio Pro</h1>
-  <p>Genera imágenes con IA · Pollinations · FLUX · SDXL · Turbo</p>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-# ──────────────────────────────────────────────────────────────
-# 7. PANEL PRINCIPAL (PROMPT + PARÁMETROS + ESTILOS)
-# ──────────────────────────────────────────────────────────────
+st.markdown("<h1 style='text-align:center; font-weight:800;'>✨ AI Studio Pro</h1>", unsafe_allow_html=True)
 
 with st.container(key="main-card"):
-
-    # Estilos rápidos FUNCIONALES (solo uno activo)
-    st.markdown('<div class="ai-styles-row">', unsafe_allow_html=True)
-    cols = st.columns(len(QUICK_STYLES))
+    # Fila de Estilos Rápidos
+    st.markdown("<p style='font-size:0.8rem; font-weight:700; color:#9ca3af; text-transform:uppercase;'>Selecciona un Estilo</p>", unsafe_allow_html=True)
+    cols_styles = st.columns(len(QUICK_STYLES))
     for i, style in enumerate(QUICK_STYLES):
         is_active = st.session_state.active_style == style["id"]
-        cls = "ai-chip-btn-active" if is_active else "ai-chip-btn"
-        with cols[i]:
-            st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
-            clicked = st.button(style["label"], key=f"style_{style['id']}")
+        with cols_styles[i]:
+            st.markdown(f'<div class="{"ai-chip-btn-active" if is_active else "ai-chip-btn"}">', unsafe_allow_html=True)
+            if st.button(style["label"], key=f"btn_{style['id']}"):
+                st.session_state.active_style = None if is_active else style["id"]
+                safe_rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
-            if clicked:
-                # Exclusivo: si estaba activo, lo quitamos; si no, activamos este y desactivamos el resto
-                if is_active:
-                    st.session_state.active_style = None
-                else:
-                    st.session_state.active_style = style["id"]
-                
-                if hasattr(st, "rerun"):
-                    st.rerun()
-                else:
-                    st.experimental_rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # Prompt principal (base, sin estilo)
-    prompt = st.text_area(
-        "Describe tu imagen",
+    # Input de Texto
+    prompt_input = st.text_area(
+        "¿Qué quieres crear?",
         value=st.session_state.last_prompt,
-        placeholder="Ejemplo: small tabby cat standing on a blue asteroid in deep space, cinematic lighting...",
-        height=90,
-        label_visibility="collapsed",
+        placeholder="Ej: A futuristic city under a crystal dome, high detail, masterpiece...",
+        height=100,
+        label_visibility="collapsed"
     )
 
-    # Parámetros
-    col_modelo, col_res, col_det = st.columns([1.4, 1.1, 1.0])
-    with col_modelo:
-        modelo = st.selectbox(
-            "Motor de IA",
-            ["FLUX.1 [Dev]", "FLUX.1 Pro", "SDXL", "Turbo"],
-        )
-    with col_res:
-        resolucion = st.selectbox(
-            "Dimensión",
-            ["832×832 (1:1)", "1024×1024 (1:1)", "768×1024 (3:4)"],
-        )
-    with col_det:
-        detalle = st.select_slider(
-            "Nivel de detalle",
-            options=["Bajo", "Estándar", "Alto"],
-            value="Estándar",
-        )
+    # Parámetros secundarios
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        modelo_ui = st.selectbox("Motor IA", ["FLUX.1 [Dev]", "SDXL", "Turbo"])
+    with c2:
+        res_ui = st.selectbox("Resolución", ["832×832", "1024×1024", "768×1024"])
+    with c3:
+        detalle_ui = st.select_slider("Detalle", options=["Bajo", "Normal", "Alto"], value="Normal")
 
-    with st.expander("Opciones avanzadas", expanded=False):
-        neg_prompt = st.text_input(
-            "Qué NO quieres que aparezca",
-            value="frame, border, text, watermark, logo",
-            help="Se envía como negative prompt a la API para evitar elementos indeseados.",
-        )
-
-    c_gen, c_var = st.columns([2, 1])
-    with c_gen:
-        btn_gen = st.button("✨ Generar imagen", use_container_width=True)
-    with c_var:
-        btn_var = st.button("🔄 Crear variante", use_container_width=True)
+    # Botones de Acción
+    col_g, col_v = st.columns([2, 1])
+    with col_g:
+        btn_gen = st.button("🚀 GENERAR ARTE", use_container_width=True)
+    with col_v:
+        btn_var = st.button("🔄 VARIANTE", use_container_width=True)
 
     # ───── LÓGICA DE GENERACIÓN ─────
-    lanzar = btn_gen or btn_var
-    if lanzar:
-        if not prompt.strip() and not st.session_state.last_prompt:
-            st.warning("Escribe un prompt antes de generar.")
+    if btn_gen or btn_var:
+        if not prompt_input.strip() and not st.session_state.last_prompt:
+            st.warning("Escribe algo primero.")
         else:
-            if prompt.strip():
-                st.session_state.last_prompt = prompt.strip()
-
-            base_prompt = st.session_state.last_prompt
-
-            # 1) Aplicar estilo activo (si hay) → prompt para la API
-            estilo = get_style_by_id(st.session_state.active_style) if st.session_state.active_style else None
-            if estilo:
-                prompt_combinado = f"{estilo['inj']}, {base_prompt}"
-            else:
-                prompt_combinado = base_prompt
-
-            # 2) Deduplicar
-            prompt_api = deduplicar_prompt(prompt_combinado)
-
-            # Semilla
-            seed = random.randint(1, 99_999_999)
-
-            # Dimensiones
-            if "1024" in resolucion:
-                w, h = 1024, 1024
-            elif "768×1024" in resolucion:
-                w, h = 768, 1024
-            else:
-                w, h = 832, 832
-
-            # Modelo y detalle
-            model_tag = map_modelo(modelo)
-            enhance = detalle == "Alto"
-
-            # Estimación de tiempo
-            t_min, t_max = estimar_tiempo(modelo, resolucion, detalle)
-            st.session_state.last_estimate = (t_min, t_max)
-
-            url = construir_url(
-                prompt=prompt_api,
-                w=w,
-                h=h,
-                seed=seed,
-                model_tag=model_tag,
-                enhance=enhance,
-                neg_prompt=neg_prompt,
-            )
-
-            with st.status(
-                f"🎨 Generando... (estimado {t_min:0.1f}–{t_max:0.1f} s)",
-                expanded=True,
-            ) as status:
-                st.write(f"Prompt base: `{base_prompt}`")
-                if estilo:
-                    st.write(f"Estilo aplicado: `{estilo['inj']}`")
-                st.write(f"Prompt final para la API: `{prompt_api}`")
-                st.write(f"Modelo: **{modelo}** · Resolución: **{resolucion}** · Detalle: **{detalle}**")
-                st.write(f"URL: `{url}`")
-
-                t0 = time.time()
+            st.session_state.last_prompt = prompt_input.strip() if prompt_input.strip() else st.session_state.last_prompt
+            
+            # Aplicar Estilo
+            style_inj = ""
+            for s in QUICK_STYLES:
+                if s["id"] == st.session_state.active_style:
+                    style_inj = s["inj"]
+            
+            final_prompt = deduplicar_prompt(f"{style_inj}, {st.session_state.last_prompt}")
+            seed = random.randint(0, 9999999)
+            w, h = (1024, 1024) if "1024" in res_ui else (832, 832)
+            if "768" in res_ui: w, h = 768, 1024
+            
+            url = construir_url(final_prompt, w, h, seed, map_modelo(modelo_ui), (detalle_ui == "Alto"), "")
+            
+            with st.status("🎨 Conectando con los servidores de IA...", expanded=True) as status:
                 try:
-                    r = requests.get(url, timeout=int(t_max) + 15)
+                    t0 = time.time()
+                    r = requests.get(url, timeout=55)
                     elapsed = time.time() - t0
-                    st.session_state.last_time = elapsed
-
-                    if r.status_code == 200 and len(r.content) > 1000:
-                        result = {
-                            "prompt": base_prompt,
-                            "prompt_api": prompt_api,
-                            "seed": seed,
-                            "url": url,
+                    
+                    if r.status_code == 200:
+                        res_data = {
+                            "prompt": st.session_state.last_prompt,
                             "bytes": r.content,
-                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "modelo": modelo,
-                            "resolucion": resolucion,
-                            "detalle": detalle,
+                            "url": url,
+                            "seed": seed,
                             "elapsed": elapsed,
-                            "style_id": estilo["id"] if estilo else None,
+                            "timestamp": datetime.now().strftime("%H:%M:%S")
                         }
-                        st.session_state.current = result
-                        st.session_state.history.insert(0, result)
-                        status.update(label="✅ Imagen generada", state="complete")
+                        st.session_state.current = res_data
+                        st.session_state.history.insert(0, res_data)
+                        status.update(label="✅ Arte Generado con éxito", state="complete")
+                        safe_rerun()
                     else:
-                        st.error(f"Error {r.status_code} al obtener la imagen.")
-                        status.update(label="❌ Error al generar", state="error")
-                except requests.exceptions.Timeout:
-                    elapsed = time.time() - t0
-                    st.session_state.last_time = elapsed
-                    st.error("⏱️ Tiempo de espera agotado. La API está lenta, intenta de nuevo.")
-                    status.update(label="⏱️ Timeout", state="error")
+                        st.error("Error en la respuesta del servidor.")
                 except Exception as e:
-                    elapsed = time.time() - t0
-                    st.session_state.last_time = elapsed
-                    st.error(f"Error inesperado: {e}")
-                    status.update(label="❌ Error inesperado", state="error")
-            if hasattr(st, "rerun"):
-                st.rerun()
-            else:
-                st.experimental_rerun()
+                    st.error(f"Error técnico: {e}")
 
 # ──────────────────────────────────────────────────────────────
-# 8. RESULTADOS (TEXTO + IMAGEN + TIEMPO + HISTORIAL)
+# 7. VISUALIZACIÓN DE RESULTADOS
 # ──────────────────────────────────────────────────────────────
+st.markdown("<br>", unsafe_allow_html=True)
 
-st.markdown("<hr class='ai-divider'>", unsafe_allow_html=True)
-
-col_info, col_img = st.columns([1.1, 1.6], gap="large")
-
-with col_info:
-    if st.session_state.current:
-        curr = st.session_state.current
-
-        st.markdown("<div class='ai-results-label'>Resultado actual</div>", unsafe_allow_html=True)
-        st.markdown(
-            f"<div class='ai-results-title'>{limpiar_prompt(curr['prompt'])}</div>",
-            unsafe_allow_html=True,
-        )
-
-        # Meta chips
-        st.markdown(
-            f"""
-        <div>
-          <span class="ai-meta-chip">🤖 {curr.get('modelo')}</span>
-          <span class="ai-meta-chip">📐 {curr.get('resolucion')}</span>
-          <span class="ai-meta-chip">🌱 Seed {curr.get('seed')}</span>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-
-        # Tiempo estimado vs real
-        if st.session_state.last_estimate and curr.get("elapsed") is not None:
-            est_min, est_max = st.session_state.last_estimate
-            real = curr["elapsed"]
-            st.write(
-                f"⏱️ Tiempo estimado: {est_min:0.1f}–{est_max:0.1f} s · "
-                f"tiempo real: **{real:0.2f} s**"
-            )
-
-        # Descargar
-        if curr.get("bytes"):
-            st.download_button(
-                label="📥 Descargar imagen",
-                data=curr["bytes"],
-                file_name=f"aistudio_{curr['seed']}.png",
-                mime="image/png",
-                use_container_width=True,
-            )
-
-        st.write("")
-        st.markdown(
-            f"<span style='font-size:0.8rem;color:#9ca3af;'>URL original: <code>{curr['url']}</code></span>",
-            unsafe_allow_html=True,
-        )
-
-        # Historial (máx 5 previas)
-        history_rest = st.session_state.history[1:6]
-        if history_rest:
-            st.write("")
-            st.markdown("<div class='ai-results-label'>Historial</div>", unsafe_allow_html=True)
-            for idx, item in enumerate(history_rest):
-                h_titulo = limpiar_prompt(item["prompt"])
-                if st.button(
-                    f"🖼️ {h_titulo}",
-                    key=f"hist_{idx}",
-                    use_container_width=True,
-                    help=f"Seed {item['seed']} · {item['timestamp']}",
-                ):
-                    st.session_state.current = item
-                    st.experimental_rerun()
-    else:
-        st.markdown(
-            """
-        <div class="ai-placeholder">
-          <div style="font-size:2.2rem;margin-bottom:0.4rem;">🖼️</div>
-          <div>Tu imagen aparecerá aquí con sus detalles, tiempo de generación y descarga.</div>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-
-with col_img:
-    if st.session_state.current:
-        curr = st.session_state.current
-        st.markdown("<div class='ai-img-frame'>", unsafe_allow_html=True)
-        st.image(curr["bytes"] if curr.get("bytes") else curr["url"], use_container_width=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-    else:
-        st.markdown(
-            """
-        <div class="ai-placeholder" style="min-height:360px;">
-          Vista previa de la imagen generada
-        </div>
-        """,
-            unsafe_allow_html=True,
+if st.session_state.current:
+    curr = st.session_state.current
+    col_info, col_img = st.columns([1, 1.8], gap="large")
+    
+    with col_info:
+        st.markdown(f"### {limpiar_prompt(curr['prompt'])}")
+        st.info(f"⏱️ Generado en {curr['elapsed']:.2f} segundos")
+        st.write(f"**Semilla:** `{curr['seed']}`")
+        st.download_button(
+            "📥 Descargar Imagen (HD)",
+            curr["bytes"],
+            f"ai_studio_{curr['seed']}.png",
+            "image/png",
+            use_container_width=True
         )
         
+        # Mini Historial
+        if len(st.session_state.history) > 1:
+            st.markdown("---")
+            st.markdown("**Recientes**")
+            for i, h in enumerate(st.session_state.history[1:4]):
+                if st.button(f"🖼️ {limpiar_prompt(h['prompt'])}", key=f"hist_{i}"):
+                    st.session_state.current = h
+                    safe_rerun()
+                    
+    with col_img:
+        st.markdown('<div class="ai-img-frame">', unsafe_allow_html=True)
+        st.image(curr["bytes"])
+        st.markdown('</div>', unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <div class="ai-placeholder">
+        <p style="font-size: 3rem;">🖼️</p>
+        <p>Escribe tu idea arriba y haz clic en Generar para ver la magia.</p>
+    </div>
+    """, unsafe_allow_html=True)
