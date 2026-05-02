@@ -416,6 +416,11 @@ with st.container(key="main-card"):
                     st.session_state.active_style = None
                 else:
                     st.session_state.active_style = style["id"]
+                
+                if hasattr(st, "rerun"):
+                    st.rerun()
+                else:
+                    st.experimental_rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
     # Prompt principal (base, sin estilo)
@@ -556,8 +561,10 @@ with st.container(key="main-card"):
                     st.session_state.last_time = elapsed
                     st.error(f"Error inesperado: {e}")
                     status.update(label="❌ Error inesperado", state="error")
-
-            st.experimental_rerun()
+            if hasattr(st, "rerun"):
+                st.rerun()
+            else:
+                st.experimental_rerun()
 
 # ──────────────────────────────────────────────────────────────
 # 8. RESULTADOS (TEXTO + IMAGEN + TIEMPO + HISTORIAL)
