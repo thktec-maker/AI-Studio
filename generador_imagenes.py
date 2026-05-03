@@ -292,20 +292,39 @@ st.markdown("""
 # ──────────────────────────────────────────────────────────────
 with st.container(key="main-card"):
 
-    # Estilos rápidos
-    st.markdown('<div class="ai-styles-row">', unsafe_allow_html=True)
-    cols = st.columns(len(QUICK_STYLES))
-    for i, style in enumerate(QUICK_STYLES):
-        is_active = st.session_state.active_style == style["id"]
-        cls = "ai-chip-btn-active" if is_active else "ai-chip-btn"
-        with cols[i]:
-            st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
-            clicked = st.button(style["label"], key=f"style_{style['id']}")
-            st.markdown("</div>", unsafe_allow_html=True)
-            if clicked:
-                st.session_state.active_style = None if is_active else style["id"]
-                safe_rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
+    # ── Estilos rápidos (selector fiable con radio) ──
+    style_options = ["Sin estilo"] + [s["label"] for s in QUICK_STYLES]
+
+    # Encontrar el índice activo actual
+    active_label = "Sin estilo"
+    if st.session_state.active_style:
+        for s in QUICK_STYLES:
+            if s["id"] == st.session_state.active_style:
+                active_label = s["label"]
+                break
+
+    selected_label = st.radio(
+        "🎨 Estilo rápido",
+        options=style_options,
+        index=style_options.index(active_label),
+        horizontal=True,
+        key="radio_style",
+    )
+
+    # Actualizar estado si cambió
+    if selected_label == "Sin estilo":
+        new_style_id = None
+    else:
+        new_style_id = next((s["id"] for s in QUICK_STYLES if s["label"] == selected_label), None)
+
+    if new_style_id != st.session_state.active_style:
+        st.session_state.active_style = new_style_id
+        safe_rerun()
+
+    # Mostrar qué estilo está activo
+    if st.session_state.active_style:
+        estilo_activo = get_style_by_id(st.session_state.active_style)
+        st.caption(f"✅ Estilo activo: **{estilo_activo['label']}** — se añadirá automáticamente a tu prompt.")
 
     # Prompt
     prompt = st.text_area(
