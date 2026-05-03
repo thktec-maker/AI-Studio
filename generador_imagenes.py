@@ -3,6 +3,7 @@ import urllib.parse
 import random
 import requests
 import time
+import threading
 from datetime import datetime
 
 st.set_page_config(page_title="AI Studio Pro", page_icon="✨", layout="wide", initial_sidebar_state="collapsed")
@@ -158,46 +159,81 @@ with st.container(key="main-card"):
             url = construir_url(final_prompt, w, h, seed, map_modelo(modelo), False, neg_prompt)
             timeout = 40 if "Turbo" in modelo else 70
 
-            with st.status("🎨 Generando…", expanded=True) as status:
-                st.write(f"**{modelo}** · {resolucion} · {detalle} · Seed `{seed}`")
+            # Tiempo estimado según modelo
+            est_time = 8 if "Turbo" in modelo else (20 if "SDXL" in modelo else 25)
 
-                t0 = time.time()
-                ok = False
+            # Lanzar request en hilo para poder mostrar temporizador
+            result_box = {"response": None, "error": None}
+            def do_request():
                 try:
-                    r = requests.get(url, timeout=timeout)
-                    elapsed = time.time() - t0
-                    if r.status_code == 200 and len(r.content) > 1000:
-                        meta = {
-                            "prompt": base, "seed": seed,
-                            "elapsed": elapsed, "timestamp": datetime.now().strftime("%H:%M"),
-                            "modelo": modelo, "resolucion": resolucion, "detalle": detalle,
-                            "style": est["label"] if est else "—", "url": url,
-                        }
-                        # OPTIMIZACIÓN CLAVE: solo guardamos bytes de la imagen ACTUAL
-                        # El historial solo guarda metadatos + URL (sin bytes)
-                        st.session_state.current_bytes = r.content
-                        st.session_state.current_meta = meta
-
-                        # Historial ligero: solo metadatos, sin bytes pesados
-                        st.session_state.history.insert(0, meta)
-                        if len(st.session_state.history) > MAX_HISTORY:
-                            st.session_state.history = st.session_state.history[:MAX_HISTORY]
-
-                        status.update(label=f"✅ Lista en {elapsed:.1f}s", state="complete")
-                        ok = True
-                    else:
-                        st.error(f"Error {r.status_code}. Intenta de nuevo.")
-                        status.update(label="❌ Error", state="error")
-                except requests.exceptions.Timeout:
-                    st.error("⏱️ Timeout. Usa Turbo o baja resolución.")
-                    status.update(label="⏱️ Timeout", state="error")
-                except requests.exceptions.ConnectionError:
-                    st.error("🔌 Sin conexión.")
-                    status.update(label="🔌 Sin conexión", state="error")
+                    result_box["response"] = requests.get(url, timeout=timeout)
                 except Exception as e:
-                    st.error(f"Error: {e}")
-                    status.update(label="❌ Error", state="error")
+                    result_box["error"] = e
 
+            thread = threading.Thread(target=do_request, daemon=True)
+
+            # UI del temporizador
+            st.write(f"**{modelo}** · {resolucion} · {detalle} · Seed `{seed}`")
+            timer_text = st.empty()
+            progress = st.progress(0)
+            msg_extra = st.empty()
+
+            t0 = time.time()
+            thread.start()
+
+            # Cuenta regresiva con actualización cada 0.5s
+            while thread.is_alive():
+                elapsed = time.time() - t0
+                remaining = max(0, est_time - elapsed)
+                pct = min(elapsed / est_time, 1.0)
+                progress.progress(pct)
+
+                if elapsed <= est_time:
+                    timer_text.markdown(f"⏱️ Tiempo estimado: **{remaining:.0f}s** restantes…")
+                    msg_extra.empty()
+                else:
+                    extra = elapsed - est_time
+                    timer_text.markdown(f"⏳ Llevas **{elapsed:.0f}s** — alta demanda en servidores")
+                    msg_extra.info("🔥 Los servidores están ocupados. Tu imagen está en cola, espera unos segundos más…")
+
+                time.sleep(0.5)
+
+            elapsed = time.time() - t0
+            progress.progress(1.0)
+            timer_text.empty()
+            msg_extra.empty()
+
+            # Procesar resultado
+            ok = False
+            if result_box["error"]:
+                err = result_box["error"]
+                if isinstance(err, requests.exceptions.Timeout):
+                    st.error(f"⏱️ Timeout tras {elapsed:.0f}s. Usa **Turbo** o baja resolución.")
+                elif isinstance(err, requests.exceptions.ConnectionError):
+                    st.error("🔌 Sin conexión a internet.")
+                else:
+                    st.error(f"Error: {err}")
+            else:
+                r = result_box["response"]
+                if r.status_code == 200 and len(r.content) > 1000:
+                    meta = {
+                        "prompt": base, "seed": seed,
+                        "elapsed": elapsed, "timestamp": datetime.now().strftime("%H:%M"),
+                        "modelo": modelo, "resolucion": resolucion, "detalle": detalle,
+                        "style": est["label"] if est else "—", "url": url,
+                    }
+                    st.session_state.current_bytes = r.content
+                    st.session_state.current_meta = meta
+                    st.session_state.history.insert(0, meta)
+                    if len(st.session_state.history) > MAX_HISTORY:
+                        st.session_state.history = st.session_state.history[:MAX_HISTORY]
+
+                    st.success(f"✅ Imagen generada en **{elapsed:.1f}s**")
+                    ok = True
+                else:
+                    st.error(f"Error {r.status_code}. Intenta de nuevo.")
+
+            progress.empty()
             if ok:
                 safe_rerun()
 
