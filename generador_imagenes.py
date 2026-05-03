@@ -18,11 +18,6 @@ st.set_page_config(
 # ──────────────────────────────────────────────────────────────
 # 2. TABLA DE ESTILOS RÁPIDOS
 # ──────────────────────────────────────────────────────────────
-# Cada estilo tiene:
-# - id: para manejar estado
-# - label: lo que ve el usuario
-# - inj: texto que se inyecta al prompt para el modelo (en inglés, preciso)
-
 QUICK_STYLES = [
     {
         "id": "realismo",
@@ -57,33 +52,31 @@ QUICK_STYLES = [
 ]
 
 # ──────────────────────────────────────────────────────────────
-# 3. UTILIDADES PROMPT / URL
+# 3. UTILIDADES
 # ──────────────────────────────────────────────────────────────
 
+def safe_rerun():
+    """Compatible con todas las versiones de Streamlit. Nunca lanza AttributeError."""
+    if hasattr(st, "rerun"):
+        st.rerun()
+    elif hasattr(st, "experimental_rerun"):
+        st.experimental_rerun()
+
+
 def limpiar_prompt(prompt: str) -> str:
-    """
-    Versión “humana” del prompt para título:
-    - Elimina duplicados separados por coma
-    - Recorta a ~80 caracteres
-    """
     p = " ".join(prompt.split())
     partes = [s.strip() for s in p.split(",") if s.strip()]
     usados = set()
     unicas = []
     for s in partes:
-        clave = s.lower()
-        if clave not in usados:
-            usados.add(clave)
+        if s.lower() not in usados:
+            usados.add(s.lower())
             unicas.append(s)
     limpio = ", ".join(unicas)
     return (limpio[:82] + "...") if len(limpio) > 85 else limpio.capitalize()
 
 
 def deduplicar_prompt(prompt: str) -> str:
-    """
-    Limpia el prompt ANTES de enviarlo a la API:
-    - Elimina frases repetidas
-    """
     partes = [s.strip() for s in prompt.split(",") if s.strip()]
     usados = set()
     unicas = []
@@ -109,7 +102,6 @@ def construir_url(prompt: str, w: int, h: int, seed: int,
 
 
 def map_modelo(modelo: str) -> str:
-    """Mapea el select de UI al tag interno de modelo."""
     if "FLUX" in modelo:
         return "flux"
     if "Stable" in modelo or "SDXL" in modelo:
@@ -117,33 +109,22 @@ def map_modelo(modelo: str) -> str:
     return "turbo"
 
 
-def estimar_tiempo(modelo: str, resolucion: str, detalle: str) -> tuple[float, float]:
-    """
-    Heurística simple de tiempo estimado en segundos (min, max).
-    Ajusta estos valores según tus mediciones reales.
-    """
+def estimar_tiempo(modelo: str, resolucion: str, detalle: str):
     base = 3.0
-
-    # Resolución
     if "1024" in resolucion:
         base += 2.0
     elif "768" in resolucion:
         base += 1.0
-
-    # Modelo
     if "Pro" in modelo or "Dev" in modelo:
         base += 1.5
     elif "Turbo" in modelo:
         base -= 0.5
-
-    # Detalle
     if detalle == "Alto":
         base += 2.0
     elif detalle == "Bajo":
         base -= 1.0
-
     base = max(1.5, base)
-    return base * 0.7, base * 1.3  # rango min–max
+    return base * 0.7, base * 1.3
 
 
 def get_style_by_id(style_id: str):
@@ -156,9 +137,7 @@ def get_style_by_id(style_id: str):
 # ──────────────────────────────────────────────────────────────
 # 4. CSS / LAYOUT
 # ──────────────────────────────────────────────────────────────
-
-st.markdown(
-    """
+st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
@@ -173,7 +152,6 @@ st.markdown(
     --text-muted: #9ca3af;
 }
 
-/* Ocultar chrome de Streamlit */
 #MainMenu, footer, header { visibility: hidden; }
 
 .stApp {
@@ -181,31 +159,19 @@ st.markdown(
     background: radial-gradient(circle at top left, #dbeafe 0%, #f9fafb 35%, #f3f4f6 100%);
 }
 
-/* Contenedor principal centrado */
 main .block-container {
     max-width: 980px !important;
     padding: 1.5rem 1.75rem 3rem !important;
     margin: 0 auto !important;
 }
 
-/* Topbar */
-.ai-topbar {
-    text-align: center;
-    margin-bottom: 1.5rem;
-}
+.ai-topbar { text-align: center; margin-bottom: 1.5rem; }
 .ai-topbar h1 {
-    font-size: 2.2rem;
-    font-weight: 800;
-    letter-spacing: -0.03em;
-    color: var(--text-main);
-    margin-bottom: 0.1rem;
+    font-size: 2.2rem; font-weight: 800;
+    letter-spacing: -0.03em; color: var(--text-main); margin-bottom: 0.1rem;
 }
-.ai-topbar p {
-    font-size: 1rem;
-    color: var(--text-sub);
-}
+.ai-topbar p { font-size: 1rem; color: var(--text-sub); }
 
-/* Card principal */
 .st-key-main-card {
     background: var(--bg-card);
     border-radius: 20px !important;
@@ -214,7 +180,6 @@ main .block-container {
     box-shadow: 0 18px 40px rgba(15,23,42,0.10) !important;
 }
 
-/* Textarea */
 .stTextArea textarea {
     border-radius: 12px !important;
     padding: 0.85rem 1rem !important;
@@ -224,152 +189,85 @@ main .block-container {
     background: #fafafa !important;
 }
 
-/* Labels */
 .stSelectbox label, .stSlider label, label {
-    font-size: 0.8rem !important;
-    font-weight: 600 !important;
-    color: var(--text-sub) !important;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    font-size: 0.8rem !important; font-weight: 600 !important;
+    color: var(--text-sub) !important; text-transform: uppercase; letter-spacing: 0.06em;
 }
 
-/* Selects */
 .stSelectbox [data-baseweb="select"] > div {
-    border-radius: 10px !important;
-    border: 1px solid var(--border) !important;
-    font-size: 0.9rem !important;
-    padding: 0.25rem 0.5rem !important;
-    background: #fafafa !important;
+    border-radius: 10px !important; border: 1px solid var(--border) !important;
+    font-size: 0.9rem !important; padding: 0.25rem 0.5rem !important; background: #fafafa !important;
 }
 
-/* Botones principales */
 .stButton > button {
-    width: 100% !important;
-    border-radius: 999px !important;
-    border: none !important;
-    padding: 0.7rem 1.2rem !important;
-    font-size: 0.95rem !important;
-    font-weight: 600 !important;
+    width: 100% !important; border-radius: 999px !important; border: none !important;
+    padding: 0.7rem 1.2rem !important; font-size: 0.95rem !important; font-weight: 600 !important;
     background: linear-gradient(135deg, var(--primary), var(--primary-dark)) !important;
-    color: white !important;
-    box-shadow: 0 8px 22px var(--primary-glow) !important;
+    color: white !important; box-shadow: 0 8px 22px var(--primary-glow) !important;
     transition: transform 0.12s ease, box-shadow 0.12s ease !important;
 }
-.stButton > button:hover {
-    transform: translateY(-1px) !important;
-}
+.stButton > button:hover { transform: translateY(-1px) !important; }
 
-/* Botón descarga */
 .stDownloadButton > button {
-    border-radius: 999px !important;
-    border: 1px solid var(--border) !important;
-    padding: 0.65rem 1rem !important;
-    font-size: 0.88rem !important;
-    background: #f9fafb !important;
-    color: var(--text-sub) !important;
+    border-radius: 999px !important; border: 1px solid var(--border) !important;
+    padding: 0.65rem 1rem !important; font-size: 0.88rem !important;
+    background: #f9fafb !important; color: var(--text-sub) !important;
 }
 
-/* Estilos rápidos (chips) */
-.ai-styles-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-    margin-bottom: 0.8rem;
-}
+.ai-styles-row { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 0.8rem; }
+
 .ai-chip-btn > button {
-    border-radius: 999px !important;
-    border: 1px solid var(--border) !important;
-    padding: 0.25rem 0.8rem !important;
-    font-size: 0.8rem !important;
-    font-weight: 500 !important;
-    background: #f9fafb !important;
-    color: var(--text-sub) !important;
-    box-shadow: none !important;
+    border-radius: 999px !important; border: 1px solid var(--border) !important;
+    padding: 0.25rem 0.8rem !important; font-size: 0.8rem !important;
+    font-weight: 500 !important; background: #f9fafb !important;
+    color: var(--text-sub) !important; box-shadow: none !important;
 }
 .ai-chip-btn-active > button {
     border-color: var(--primary) !important;
-    background: rgba(16,163,127,0.06) !important;
-    color: var(--primary) !important;
+    background: rgba(16,163,127,0.06) !important; color: var(--primary) !important;
 }
 
-/* Resultados */
-.ai-divider {
-    border: none;
-    border-top: 1px solid var(--border);
-    margin: 1.4rem 0 1.1rem;
-}
+.ai-divider { border: none; border-top: 1px solid var(--border); margin: 1.4rem 0 1.1rem; }
+
 .ai-results-label {
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    margin-bottom: 0.4rem;
+    font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.4rem;
 }
 .ai-results-title {
-    font-size: 1.45rem;
-    font-weight: 700;
-    color: var(--text-main);
-    margin-bottom: 0.5rem;
+    font-size: 1.45rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem;
 }
 .ai-meta-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.8rem;
-    padding: 0.18rem 0.6rem;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    background: #f3f4f6;
-    color: var(--text-sub);
-    margin-right: 0.3rem;
-    margin-bottom: 0.3rem;
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    font-size: 0.8rem; padding: 0.18rem 0.6rem; border-radius: 999px;
+    border: 1px solid var(--border); background: #f3f4f6;
+    color: var(--text-sub); margin-right: 0.3rem; margin-bottom: 0.3rem;
 }
 
-/* Imagen */
 .ai-img-frame {
-    border-radius: 16px;
-    border: 1px solid rgba(255,255,255,0.7);
-    box-shadow: 0 20px 45px rgba(15,23,42,0.25);
-    max-height: 420px;
-    overflow: hidden;
-    background: #0b1120;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    border-radius: 16px; border: 1px solid rgba(255,255,255,0.7);
+    box-shadow: 0 20px 45px rgba(15,23,42,0.25); max-height: 420px;
+    overflow: hidden; background: #0b1120;
+    display: flex; align-items: center; justify-content: center;
 }
-.ai-img-frame img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    max-height: 420px;
-}
+.ai-img-frame img { width: 100%; height: 100%; object-fit: contain; max-height: 420px; }
 
-/* Placeholder */
 .ai-placeholder {
-    background: #f9fafb;
-    border-radius: 16px;
-    border: 1.5px dashed #d1d5db;
-    padding: 2.5rem 1.5rem;
-    text-align: center;
-    color: var(--text-muted);
-    font-size: 0.9rem;
+    background: #f9fafb; border-radius: 16px;
+    border: 1.5px dashed #d1d5db; padding: 2.5rem 1.5rem;
+    text-align: center; color: var(--text-muted); font-size: 0.9rem;
 }
 </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────
 # 5. ESTADO
 # ──────────────────────────────────────────────────────────────
-
 def init_state():
     defaults = {
         "history": [],
         "current": None,
         "last_prompt": "",
-        "active_style": None,      # id del estilo seleccionado
+        "active_style": None,
         "last_time": None,
         "last_estimate": None,
     }
@@ -382,24 +280,19 @@ init_state()
 # ──────────────────────────────────────────────────────────────
 # 6. TOPBAR
 # ──────────────────────────────────────────────────────────────
-
-st.markdown(
-    """
+st.markdown("""
 <div class="ai-topbar">
   <h1>AI Studio Pro</h1>
   <p>Genera imágenes con IA · Pollinations · FLUX · SDXL · Turbo</p>
 </div>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────
-# 7. PANEL PRINCIPAL (PROMPT + PARÁMETROS + ESTILOS)
+# 7. PANEL PRINCIPAL
 # ──────────────────────────────────────────────────────────────
-
 with st.container(key="main-card"):
 
-    # Estilos rápidos FUNCIONALES (solo uno activo)
+    # Estilos rápidos
     st.markdown('<div class="ai-styles-row">', unsafe_allow_html=True)
     cols = st.columns(len(QUICK_STYLES))
     for i, style in enumerate(QUICK_STYLES):
@@ -409,20 +302,16 @@ with st.container(key="main-card"):
             st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
             clicked = st.button(style["label"], key=f"style_{style['id']}")
             st.markdown("</div>", unsafe_allow_html=True)
-
             if clicked:
-                # Exclusivo: si estaba activo, lo quitamos; si no, activamos este y desactivamos el resto
-                if is_active:
-                    st.session_state.active_style = None
-                else:
-                    st.session_state.active_style = style["id"]
+                st.session_state.active_style = None if is_active else style["id"]
+                safe_rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Prompt principal (base, sin estilo)
+    # Prompt
     prompt = st.text_area(
         "Describe tu imagen",
         value=st.session_state.last_prompt,
-        placeholder="Ejemplo: small tabby cat standing on a blue asteroid in deep space, cinematic lighting...",
+        placeholder="Ejemplo: small tabby cat on a blue asteroid in deep space, cinematic lighting...",
         height=90,
         label_visibility="collapsed",
     )
@@ -430,27 +319,16 @@ with st.container(key="main-card"):
     # Parámetros
     col_modelo, col_res, col_det = st.columns([1.4, 1.1, 1.0])
     with col_modelo:
-        modelo = st.selectbox(
-            "Motor de IA",
-            ["FLUX.1 [Dev]", "FLUX.1 Pro", "SDXL", "Turbo"],
-        )
+        modelo = st.selectbox("Motor de IA", ["FLUX.1 [Dev]", "FLUX.1 Pro", "SDXL", "Turbo"])
     with col_res:
-        resolucion = st.selectbox(
-            "Dimensión",
-            ["832×832 (1:1)", "1024×1024 (1:1)", "768×1024 (3:4)"],
-        )
+        resolucion = st.selectbox("Dimensión", ["832×832 (1:1)", "1024×1024 (1:1)", "768×1024 (3:4)"])
     with col_det:
-        detalle = st.select_slider(
-            "Nivel de detalle",
-            options=["Bajo", "Estándar", "Alto"],
-            value="Estándar",
-        )
+        detalle = st.select_slider("Nivel de detalle", options=["Bajo", "Estándar", "Alto"], value="Estándar")
 
     with st.expander("Opciones avanzadas", expanded=False):
         neg_prompt = st.text_input(
             "Qué NO quieres que aparezca",
             value="frame, border, text, watermark, logo",
-            help="Se envía como negative prompt a la API para evitar elementos indeseados.",
         )
 
     c_gen, c_var = st.columns([2, 1])
@@ -459,9 +337,8 @@ with st.container(key="main-card"):
     with c_var:
         btn_var = st.button("🔄 Crear variante", use_container_width=True)
 
-    # ───── LÓGICA DE GENERACIÓN ─────
-    lanzar = btn_gen or btn_var
-    if lanzar:
+    # Lógica de generación
+    if btn_gen or btn_var:
         if not prompt.strip() and not st.session_state.last_prompt:
             st.warning("Escribe un prompt antes de generar.")
         else:
@@ -469,21 +346,16 @@ with st.container(key="main-card"):
                 st.session_state.last_prompt = prompt.strip()
 
             base_prompt = st.session_state.last_prompt
-
-            # 1) Aplicar estilo activo (si hay) → prompt para la API
             estilo = get_style_by_id(st.session_state.active_style) if st.session_state.active_style else None
+
             if estilo:
                 prompt_combinado = f"{estilo['inj']}, {base_prompt}"
             else:
                 prompt_combinado = base_prompt
 
-            # 2) Deduplicar
             prompt_api = deduplicar_prompt(prompt_combinado)
-
-            # Semilla
             seed = random.randint(1, 99_999_999)
 
-            # Dimensiones
             if "1024" in resolucion:
                 w, h = 1024, 1024
             elif "768×1024" in resolucion:
@@ -491,38 +363,26 @@ with st.container(key="main-card"):
             else:
                 w, h = 832, 832
 
-            # Modelo y detalle
             model_tag = map_modelo(modelo)
             enhance = detalle == "Alto"
-
-            # Estimación de tiempo
             t_min, t_max = estimar_tiempo(modelo, resolucion, detalle)
             st.session_state.last_estimate = (t_min, t_max)
 
             url = construir_url(
-                prompt=prompt_api,
-                w=w,
-                h=h,
-                seed=seed,
-                model_tag=model_tag,
-                enhance=enhance,
-                neg_prompt=neg_prompt,
+                prompt=prompt_api, w=w, h=h, seed=seed,
+                model_tag=model_tag, enhance=enhance, neg_prompt=neg_prompt,
             )
 
-            with st.status(
-                f"🎨 Generando... (estimado {t_min:0.1f}–{t_max:0.1f} s)",
-                expanded=True,
-            ) as status:
+            with st.status(f"🎨 Generando... (estimado {t_min:0.1f}–{t_max:0.1f} s)", expanded=True) as status:
                 st.write(f"Prompt base: `{base_prompt}`")
                 if estilo:
-                    st.write(f"Estilo aplicado: `{estilo['inj']}`")
-                st.write(f"Prompt final para la API: `{prompt_api}`")
+                    st.write(f"Estilo: `{estilo['inj']}`")
+                st.write(f"Prompt API: `{prompt_api}`")
                 st.write(f"Modelo: **{modelo}** · Resolución: **{resolucion}** · Detalle: **{detalle}**")
-                st.write(f"URL: `{url}`")
 
                 t0 = time.time()
                 try:
-                    r = requests.get(url, timeout=int(t_max) + 15)
+                    r = requests.get(url, timeout=int(t_max) + 30)
                     elapsed = time.time() - t0
                     st.session_state.last_time = elapsed
 
@@ -546,23 +406,24 @@ with st.container(key="main-card"):
                     else:
                         st.error(f"Error {r.status_code} al obtener la imagen.")
                         status.update(label="❌ Error al generar", state="error")
+
                 except requests.exceptions.Timeout:
                     elapsed = time.time() - t0
                     st.session_state.last_time = elapsed
-                    st.error("⏱️ Tiempo de espera agotado. La API está lenta, intenta de nuevo.")
+                    st.error("⏱️ Tiempo agotado. La API está lenta, intenta con Turbo.")
                     status.update(label="⏱️ Timeout", state="error")
+
                 except Exception as e:
                     elapsed = time.time() - t0
                     st.session_state.last_time = elapsed
                     st.error(f"Error inesperado: {e}")
                     status.update(label="❌ Error inesperado", state="error")
 
-            st.experimental_rerun()
+            safe_rerun()
 
 # ──────────────────────────────────────────────────────────────
-# 8. RESULTADOS (TEXTO + IMAGEN + TIEMPO + HISTORIAL)
+# 8. RESULTADOS
 # ──────────────────────────────────────────────────────────────
-
 st.markdown("<hr class='ai-divider'>", unsafe_allow_html=True)
 
 col_info, col_img = st.columns([1.1, 1.6], gap="large")
@@ -572,33 +433,20 @@ with col_info:
         curr = st.session_state.current
 
         st.markdown("<div class='ai-results-label'>Resultado actual</div>", unsafe_allow_html=True)
-        st.markdown(
-            f"<div class='ai-results-title'>{limpiar_prompt(curr['prompt'])}</div>",
-            unsafe_allow_html=True,
-        )
-
-        # Meta chips
-        st.markdown(
-            f"""
+        st.markdown(f"<div class='ai-results-title'>{limpiar_prompt(curr['prompt'])}</div>", unsafe_allow_html=True)
+        st.markdown(f"""
         <div>
           <span class="ai-meta-chip">🤖 {curr.get('modelo')}</span>
           <span class="ai-meta-chip">📐 {curr.get('resolucion')}</span>
           <span class="ai-meta-chip">🌱 Seed {curr.get('seed')}</span>
         </div>
-        """,
-            unsafe_allow_html=True,
-        )
+        """, unsafe_allow_html=True)
 
-        # Tiempo estimado vs real
         if st.session_state.last_estimate and curr.get("elapsed") is not None:
             est_min, est_max = st.session_state.last_estimate
             real = curr["elapsed"]
-            st.write(
-                f"⏱️ Tiempo estimado: {est_min:0.1f}–{est_max:0.1f} s · "
-                f"tiempo real: **{real:0.2f} s**"
-            )
+            st.write(f"⏱️ Estimado: {est_min:0.1f}–{est_max:0.1f} s · Real: **{real:0.2f} s**")
 
-        # Descargar
         if curr.get("bytes"):
             st.download_button(
                 label="📥 Descargar imagen",
@@ -608,37 +456,24 @@ with col_info:
                 use_container_width=True,
             )
 
-        st.write("")
-        st.markdown(
-            f"<span style='font-size:0.8rem;color:#9ca3af;'>URL original: <code>{curr['url']}</code></span>",
-            unsafe_allow_html=True,
-        )
-
-        # Historial (máx 5 previas)
+        # Historial
         history_rest = st.session_state.history[1:6]
         if history_rest:
             st.write("")
             st.markdown("<div class='ai-results-label'>Historial</div>", unsafe_allow_html=True)
             for idx, item in enumerate(history_rest):
                 h_titulo = limpiar_prompt(item["prompt"])
-                if st.button(
-                    f"🖼️ {h_titulo}",
-                    key=f"hist_{idx}",
-                    use_container_width=True,
-                    help=f"Seed {item['seed']} · {item['timestamp']}",
-                ):
+                if st.button(f"🖼️ {h_titulo}", key=f"hist_{idx}", use_container_width=True,
+                             help=f"Seed {item['seed']} · {item['timestamp']}"):
                     st.session_state.current = item
-                    st.experimental_rerun()
+                    safe_rerun()
     else:
-        st.markdown(
-            """
+        st.markdown("""
         <div class="ai-placeholder">
           <div style="font-size:2.2rem;margin-bottom:0.4rem;">🖼️</div>
           <div>Tu imagen aparecerá aquí con sus detalles, tiempo de generación y descarga.</div>
         </div>
-        """,
-            unsafe_allow_html=True,
-        )
+        """, unsafe_allow_html=True)
 
 with col_img:
     if st.session_state.current:
@@ -647,11 +482,8 @@ with col_img:
         st.image(curr["bytes"] if curr.get("bytes") else curr["url"], use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
     else:
-        st.markdown(
-            """
+        st.markdown("""
         <div class="ai-placeholder" style="min-height:360px;">
           Vista previa de la imagen generada
         </div>
-        """,
-            unsafe_allow_html=True,
-        )
+        """, unsafe_allow_html=True)
