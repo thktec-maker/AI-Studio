@@ -44,8 +44,6 @@ def construir_url(prompt, w, h, seed, model, enhance, neg):
     url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?width={w}&height={h}&seed={seed}&nologo=true&enhance={'true' if enhance else 'false'}&model={model}"
     if neg.strip():
         url += f"&negative={urllib.parse.quote(neg.strip())}"
-    # Cache buster para evitar respuestas lentas por caché del CDN
-    url += f"&t={int(time.time())}"
     return url
 
 def map_modelo(m):
@@ -157,18 +155,30 @@ with st.container(key="main-card"):
             final_prompt = api_prompt + quality_boost
 
             url = construir_url(final_prompt, w, h, seed, map_modelo(modelo), False, neg_prompt)
-            timeout = 40 if "Turbo" in modelo else 70
+            timeout = 90 if "Turbo" in modelo else 120
+            max_retries = 3
 
             # Tiempo estimado según modelo
-            est_time = 8 if "Turbo" in modelo else (20 if "SDXL" in modelo else 25)
+            est_time = 12 if "Turbo" in modelo else (30 if "SDXL" in modelo else 35)
 
-            # Lanzar request en hilo para poder mostrar temporizador
-            result_box = {"response": None, "error": None}
+            # Hilo con reintentos automáticos para 429
+            result_box = {"response": None, "error": None, "attempt": 1}
             def do_request():
-                try:
-                    result_box["response"] = requests.get(url, timeout=timeout)
-                except Exception as e:
-                    result_box["error"] = e
+                for attempt in range(1, max_retries + 1):
+                    result_box["attempt"] = attempt
+                    try:
+                        r = requests.get(url, timeout=timeout)
+                        if r.status_code == 429 and attempt < max_retries:
+                            time.sleep(4)  # Esperar antes de reintentar
+                            continue
+                        result_box["response"] = r
+                        return
+                    except Exception as e:
+                        if attempt < max_retries:
+                            time.sleep(3)
+                            continue
+                        result_box["error"] = e
+                        return
 
             thread = threading.Thread(target=do_request, daemon=True)
 
@@ -181,20 +191,22 @@ with st.container(key="main-card"):
             t0 = time.time()
             thread.start()
 
-            # Cuenta regresiva con actualización cada 0.5s
             while thread.is_alive():
                 elapsed = time.time() - t0
                 remaining = max(0, est_time - elapsed)
                 pct = min(elapsed / est_time, 1.0)
                 progress.progress(pct)
 
-                if elapsed <= est_time:
+                attempt = result_box["attempt"]
+                if attempt > 1:
+                    timer_text.markdown(f"🔄 Reintento {attempt}/{max_retries} — **{elapsed:.0f}s**")
+                    msg_extra.warning("⚡ Servidores saturados (429). Reintentando automáticamente…")
+                elif elapsed <= est_time:
                     timer_text.markdown(f"⏱️ Tiempo estimado: **{remaining:.0f}s** restantes…")
                     msg_extra.empty()
                 else:
-                    extra = elapsed - est_time
                     timer_text.markdown(f"⏳ Llevas **{elapsed:.0f}s** — alta demanda en servidores")
-                    msg_extra.info("🔥 Los servidores están ocupados. Tu imagen está en cola, espera unos segundos más…")
+                    msg_extra.info("🔥 Los servidores están ocupados. Tu imagen está en cola…")
 
                 time.sleep(0.5)
 
@@ -203,7 +215,6 @@ with st.container(key="main-card"):
             timer_text.empty()
             msg_extra.empty()
 
-            # Procesar resultado
             ok = False
             if result_box["error"]:
                 err = result_box["error"]
@@ -213,7 +224,7 @@ with st.container(key="main-card"):
                     st.error("🔌 Sin conexión a internet.")
                 else:
                     st.error(f"Error: {err}")
-            else:
+            elif result_box["response"] is not None:
                 r = result_box["response"]
                 if r.status_code == 200 and len(r.content) > 1000:
                     meta = {
@@ -227,11 +238,14 @@ with st.container(key="main-card"):
                     st.session_state.history.insert(0, meta)
                     if len(st.session_state.history) > MAX_HISTORY:
                         st.session_state.history = st.session_state.history[:MAX_HISTORY]
-
                     st.success(f"✅ Imagen generada en **{elapsed:.1f}s**")
                     ok = True
+                elif r.status_code == 429:
+                    st.error("⚡ Demasiadas peticiones (429). Espera **10 segundos** y vuelve a intentar.")
                 else:
-                    st.error(f"Error {r.status_code}. Intenta de nuevo.")
+                    st.error(f"Error {r.status_code}. Intenta con otro modelo o baja la resolución.")
+            else:
+                st.error("Sin respuesta del servidor.")
 
             progress.empty()
             if ok:
